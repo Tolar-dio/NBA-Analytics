@@ -1,0 +1,6 @@
+__pycache__/
+analysis/output/
+site/data/
+
+# the private repo's tables, checked out by the nightly; never commit
+private/
