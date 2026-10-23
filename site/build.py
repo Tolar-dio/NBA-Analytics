@@ -28,6 +28,8 @@ import pandas as pd
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "analysis"))
 from common import table, out_path, TABLES, PREV, CUR  # noqa: E402
+import stories  # noqa: E402
+import profiles as prof  # noqa: E402
 
 DATA = os.path.join(ROOT, "site", "data")
 LABEL = lambda s: f"{s}-{(s + 1) % 100:02d}"  # noqa: E731
@@ -121,7 +123,7 @@ def season_data(season):
     box = table(season, "player_games")
     shots = table(season, "shots")
     plays = table(season, "plays")[["game_id", "order", "period", "t", "team_id", "type", "scoring", "value",
-                                    "home_score", "away_score"]]
+                                    "home_score", "away_score", "p1"]]
     xp = pd.read_csv(out_path(season, "shots_xp.csv.gz"))
     shots = shots.merge(xp[["game_id", "order", "p_make", "xpts", "xpts_trip", "k"]], on=["game_id", "order"],
                         how="left")
@@ -134,7 +136,8 @@ def season_data(season):
     usage = pd.read_csv(out_path(season, "player_games.csv.gz"))
     abbr = dict(zip(teams_t.team_id, teams_t.abbr))
     reg_ids = set(games[games.game_type.isin(REG)].game_id)
-    return dict(games=games, teams_t=teams_t, bio=pl_bio, box=box, shots=shots, plays=plays, teams=teams_csv,
+    stints = table(season, "stints")
+    return dict(games=games, teams_t=teams_t, bio=pl_bio, box=box, shots=shots, plays=plays, teams=teams_csv, stints=stints,
                 players=players_csv, lineups=lineups, usage=usage, abbr=abbr, reg_ids=reg_ids, trips=trips)
 
 
@@ -192,6 +195,8 @@ def players(season, D, lg):
     dump(f"players.{season}.json", {"season": season, "players": records(p.sort_values("pts_pg", ascending=False),
                                                                            cols)})
     bio = D["bio"].set_index("player_id")
+    per_team = 2 * len(D["reg_ids"]) / 30
+    profs = prof.profiles(D["players"], bio.position.to_dict(), max(5, min(20, int(per_team / 3))))
     games = D["games"].set_index("game_id")
     box = D["box"].merge(D["usage"][["game_id", "player_id", "usage", "poss_on"]], on=["game_id", "player_id"],
                          how="left")
@@ -227,9 +232,11 @@ def players(season, D, lg):
         if b is not None:
             info = {"name": f"{b.first_name} {b.last_name}", "position": b.position,
                     "height_in": None if pd.isna(b.height_in) else int(b.height_in), "jersey": b.jersey,
+                    "weight": None if pd.isna(b.weight) else int(b.weight),
                     "country": b.country, "college": b.college, "draft_year": b.draft_year,
                     "draft_round": b.draft_round, "draft_number": b.draft_number}
         dump(f"player/{season}/{pid}.json", {"season": season, "id": int(pid), "bio": info, "lines": lines,
+                                             "profile": profs.get(int(pid)),
                                              "log_cols": ["game_id", "date", "team", "opp", "home", "own", "opp_pts",
                                                           "type", "starter", "min", "pts", "reb", "ast", "stl", "blk",
                                                           "tov", "fgm", "fga", "fg3m", "fg3a", "ftm", "fta", "pm",
@@ -242,6 +249,8 @@ def players(season, D, lg):
 def teams(season, D, lg, lt):
     sh = D["shots"][D["shots"].game_id.isin(D["reg_ids"]) & (D["shots"].heave == 0)]
     games = D["games"]
+    g_reg = games[games.game_type.isin(REG)]
+    names = {int(r.player_id): f"{r.first_name} {r.last_name}" for r in D["bio"].itertuples()}
     zones = {}
     gl = pd.read_csv(out_path(season, "games_x.csv")) if os.path.exists(out_path(season, "games_x.csv")) else None
     for r in lt.itertuples(index=False):
@@ -265,6 +274,9 @@ def teams(season, D, lg, lt):
                             m.win_home if home else 1 - m.win_home]
             res.append(row)
         zones[ab] = {"for": zone_table(own, lg["zones"]), "against": zone_table(against, lg["zones"])}
+        reg_g = g_reg[(g_reg.home_id == tid) | (g_reg.away_id == tid)].sort_values("date")
+        rot_ids = set(reg_g.game_id.tail(10)) if season == CUR else set(reg_g.game_id)
+        rot = prof.rotation(D["stints"], tid, rot_ids, names)
         dump(f"team/{season}/{ab}.json", {
             "season": season, "team": clean(next(iter(records(lt[lt.team_id == tid])))),
             "players": records(pl, [c for c in PCOLS if c in pl.columns]),
@@ -272,6 +284,7 @@ def teams(season, D, lg, lt):
             "results_cols": ["game_id", "date", "type", "opp", "home", "own", "opp_pts", "x_own", "x_opp", "win_x"],
             "results": res,
             "zones_for": zones[ab]["for"], "zones_against": zones[ab]["against"],
+            "rotation": rot, "rotation_recent": season == CUR,
         })
     return zones
 
@@ -289,6 +302,12 @@ def games_out(season, D):
     sc = plays[(plays.scoring == 1) & (plays.value > 0)]
     sc_by = dict(tuple(sc.groupby("game_id")))
     box_by = dict(tuple(box.groupby("game_id")))
+    # each player's season high and games played before each game, for "his most this season"
+    played = box[box.sec_on > 0].sort_values(["date", "game_id"])
+    hi = played.groupby("player_id").pts.transform(lambda s_: s_.shift().cummax())
+    n_before = played.groupby("player_id").cumcount()
+    before = {(int(a), int(b)): (None if pd.isna(h) else int(h), int(n))
+              for a, b, h, n in zip(played.game_id, played.player_id, hi, n_before)}
     for g in games.itertuples(index=False):
         gid, home, away = g.game_id, g.home_id, g.away_id
         s = shots_by.get(gid, sh.iloc[:0])
@@ -328,8 +347,12 @@ def games_out(season, D):
         scoring = sc_by.get(gid)
         flow = [[round(float(r.t), 1), int(r.home_score), int(r.away_score)] for r in scoring.itertuples(index=False)
                 if pd.notna(r.home_score)] if scoring is not None else []
+        gb = box_by.get(gid, box.iloc[:0])
+        story, stars = stories.game_story(g, scoring if scoring is not None else sc.iloc[:0], gb[gb.sec_on > 0], name,
+                                          before)
         dump(f"game/{season}/{gid}.json", {
             "season": season, "id": int(gid), "date": g.date, "tip_utc": g.tip_utc, "type": g.game_type,
+            "story": story, "stars": stars,
             "home": g.home, "away": g.away, "home_score": int(g.home_score), "away_score": int(g.away_score),
             "ot": int(g.ot), "quarters": quarters, "x_home": xh, "x_away": xa, "win_home": wh,
             "box_cols": ["id", "name", "starter", "min", "pts", "reb", "oreb", "ast", "stl", "blk", "tov", "pf",

@@ -283,6 +283,7 @@ async function renderTeam(view, abbr) {
       <div id="tZones"></div></div>
   </section>
   <section class="zone"><h2>Players</h2><p class="lede">Usage is the share of the team's shots, free throws and turnovers a player uses while he's on the floor. On/off is the team's net rating with him on minus with him off: noisy, and it rides on who he plays with.</p><div id="tPlayers"></div></section>
+  ${T.rotation ? `<section class="zone"><h2>Who plays when</h2><p class="lede">How often each player was on the floor in every minute of the game, ${T.rotation_recent ? `over the last ${T.rotation.games === 1 ? "game" : T.rotation.games + " games"}` : `across all ${T.rotation.games} regular-season games`}. Darker means more often.</p>${rotationChart(T.rotation)}</section>` : ""}
   <section class="zone"><h2>Lineups they trust</h2><p class="lede">Five-man groups with the most possessions together. Even the most-used lineups play only a few hundred possessions, so treat the ratings as hints.</p><div id="tLineups"></div></section>
   <section class="zone"><h2>Results</h2><p class="lede">Every game, with how often the shots each team got would have won it.</p><div id="tResults"></div></section>`;
   $("#mineBtn").addEventListener("click", () => { store.set("board-team", mine ? "" : abbr); applyTeamButton(); renderTeam(view, abbr); });
@@ -413,7 +414,7 @@ async function renderPlayer(view, id) {
   const L = await league();
   view.innerHTML = `<a class="back" href="#players">All players</a>
   <section class="zone"><div class="head-row"><h1 class="grow">${esc(b.name || "")}</h1>${followBtn({ id: P.id, name: b.name, team: teams[teams.length - 1] })}</div>
-    <p class="lede">${teams.map((t) => `<a href="#teams/${t}">${t}</a>`).join(", ")}${b.position ? `, ${esc(b.position)}` : ""}${b.height_in ? `, ${heightFt(b.height_in)}` : ""}${b.jersey ? `, #${esc(b.jersey)}` : ""}${b.draft_year ? `. Drafted ${b.draft_year}, round ${b.draft_round}, pick ${b.draft_number}` : ""}${b.college ? `. ${esc(b.college)}` : ""}.</p>
+    <p class="lede">${teams.map((t) => `<a href="#teams/${t}">${t}</a>`).join(", ")}${b.position ? `, ${esc(b.position)}` : ""}${b.height_in ? `, ${heightFt(b.height_in)}` : ""}${b.weight ? `, ${b.weight} lb` : ""}${b.jersey ? `, #${esc(b.jersey)}` : ""}${b.draft_year ? `. Drafted ${b.draft_year}, round ${b.draft_round}, pick ${b.draft_number}` : ""}${b.college ? `. ${esc(b.college)}` : ""}.</p>
     <div id="pInj"></div>
     <div class="strip">
       <div><b>${num(tot("pts") / gp)}</b><span>Points a game</span></div>
@@ -423,6 +424,7 @@ async function renderPlayer(view, id) {
       <div><b>${pct(line.usage)}</b><span>Usage</span></div>
       <div><b>${pct(line.ts)}</b><span>True shooting</span></div>
     </div></section>
+  ${profileSection(P.profile, P.season)}
   <section class="zone grid-2 wide-left">
     <div><h2>Every shot</h2><svg id="pCourt"></svg>${Court.key()}<p class="shot-panel" id="pShot">Tap or hover a shot for the details.</p></div>
     <div><h2>How he scores</h2><p class="lede" id="pScoring"></p>${zonesTable(P.zones, "His")}</div>
@@ -475,6 +477,21 @@ async function renderPlayer(view, id) {
   ]);
 }
 
+function profileSection(pr, season) {
+  if (!pr) return season === D.meta.current ? `<section class="zone"><h2>How he plays</h2><p class="note">Profiles start once he has enough games and minutes this season. Switch to last season with the season picker at the top.</p></section>` : "";
+  const row = ([key, label, val, pc, kind]) => `<div class="pr-row"><span class="pr-l">${esc(label)}</span><span class="pr-v">${esc(val)}</span>
+    <span class="pr-bar" title="${pc}th percentile"><span class="${kind === "quality" ? (pc >= 67 ? "q-good" : pc <= 33 ? "q-bad" : "q-mid") : "q-style"}" style="width:${Math.max(pc, 2)}%"></span></span><span class="pr-p">${ordinal(pc)}</span></div>`;
+  const style = pr.rows.filter((r) => r[4] === "style"), q = pr.rows.filter((r) => r[4] === "quality");
+  return `<section class="zone"><h2>How he plays</h2>${pr.words.length ? `<p class="story-p">${pr.words.map(esc).join(" ")}</p>` : ""}
+    <div class="grid-2"><div><h3>Style</h3>${style.map(row).join("")}</div><div><h3>Results</h3>${q.map(row).join("")}</div></div>
+    <p class="note">Percentiles among the ${pr.pool} ${esc(pr.group)} with 12 or more minutes a game. Style bars aren't good or bad, just how he plays; on results, blue is better than most, red worse. For turnovers and rim defense, a high percentile means fewer turnovers or fewer makes allowed.</p></section>`;
+}
+function rotationChart(R) {
+  const head = `<div class="rot-row rot-head"><span></span>${[1, 2, 3, 4].map((q) => `<span class="rq">Q${q}</span>`).join("")}<span class="rm">Min</span></div>`;
+  const rows = R.players.map(([id, name, m, gp, mins]) => `<div class="rot-row"><a class="rn" href="#players/${id}" title="${esc(name)}"><span class="full">${esc(name)}</span><span class="short">${esc(lastName(name))}</span></a>${mins.map((v, k) => `<i class="${v ? "" : "z"}${k && k % 12 === 0 ? " qs" : ""}" style="--o:${(0.12 + 0.88 * v / 100).toFixed(2)}" title="Minute ${k + 1}: on the floor in ${v}% of his games"></i>`).join("")}<span class="rm">${num(m, 0)}</span></div>`).join("");
+  return `<div class="rot" role="img" aria-label="Who plays when, minute by minute">${head}${rows}</div><p class="note">Each row is out of the games that player played${R.players.some((r) => r[3] < R.games) ? ", so injuries and rest days don't lighten it" : ""}. Minutes are his average in those games.</p>`;
+}
+
 // ------------------------------------------------------------------ Games
 async function renderGames(view) {
   const G = await getJSON(`games.${S.season}.json`);
@@ -523,6 +540,10 @@ async function renderGame(view, season, id) {
       <tr><td class="l">${esc(g.away)}</td>${g.quarters.away.map((v) => `<td>${v ?? ""}</td>`).join("")}<td><b>${g.away_score}</b></td></tr>
       <tr><td class="l">${esc(g.home)}</td>${g.quarters.home.map((v) => `<td>${v ?? ""}</td>`).join("")}<td><b>${g.home_score}</b></td></tr></tbody></table></div>
   </section>
+  ${g.story && g.story.length ? `<section class="zone"><h2>The story</h2><p class="story-p">${g.story.map(esc).join(" ")}</p>
+    ${g.stars && g.stars.length ? `<ol class="perfs stars">${g.stars.map((x) => `<li class="perf"><div class="perf-h"><a class="who" href="#players/${x.id}">${esc(x.name)}</a> <span class="dim">${esc(x.team)}</span></div>
+      <div class="perf-l"><b>${x.pts}</b> pts <b>${x.reb}</b> reb <b>${x.ast}</b> ast${x.stl >= 3 ? ` <b>${x.stl}</b> stl` : ""}${x.blk >= 3 ? ` <b>${x.blk}</b> blk` : ""}</div>
+      <div class="dim perf-s">${esc(x.fg)} FG, ${esc(x.fg3)} 3PT. Game score ${num(x.gs, 1)}</div></li>`).join("")}</ol>` : ""}</section>` : ""}
   <section class="zone" id="gHigh"></section>
   <section class="zone"><h2>Did the shots agree?</h2>
     ${w == null ? "" : `<div class="deserve"><span>${esc(g.away)} ${pct(1 - w, 0)}</span><div class="track" role="img" aria-label="${esc(g.home)} ${pct(w, 0)}"><span style="width:${100 * (1 - w)}%;background:var(--ink-2)"></span><span style="width:${100 * w}%"></span></div><span>${esc(g.home)} ${pct(w, 0)}</span></div>`}

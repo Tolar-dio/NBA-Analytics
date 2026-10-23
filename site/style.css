@@ -326,3 +326,30 @@ td a.who:hover { color: var(--blue); text-decoration: underline; }
 .perf-n { margin-top: 6px; font: 700 15px/1.3 var(--hand); color: var(--blue); }
 .mtable td.l { white-space: normal; min-width: 9em; }
 @media (max-width: 640px) { .mtable td, .mtable th { padding-left: 6px; padding-right: 6px; } .mtable .rk { display: block; margin-left: 0; } }
+.story-p { max-width: 70ch; font-size: 17px; margin: 10px 0 14px; }
+.stars { margin-top: 4px; }
+
+/* How he plays, who plays when */
+.pr-row { display: grid; grid-template-columns: minmax(0, 1fr) 64px 120px 40px; gap: 8px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--hair); font-size: 14px; }
+.pr-l { color: var(--ink-2); }
+.pr-v { text-align: right; font-weight: 650; }
+.pr-p { text-align: right; color: var(--muted); font-size: 12px; }
+.pr-bar { height: 8px; background: var(--board); border-radius: 4px; overflow: hidden; border: 1px solid var(--hair); }
+.pr-bar span { display: block; height: 100%; }
+.q-style { background: var(--ink-2); opacity: 0.6; }
+.q-good { background: var(--blue); }
+.q-bad { background: var(--red); }
+.q-mid { background: var(--muted); }
+@media (max-width: 640px) { .pr-row { grid-template-columns: minmax(0, 1fr) 56px 70px 34px; } }
+.rot { margin-top: 8px; }
+.rot-row { display: grid; grid-template-columns: 160px repeat(48, minmax(0, 1fr)) 34px; column-gap: 1px; align-items: center; height: 24px; }
+.rot-row i { height: 17px; background: var(--blue); opacity: var(--o); }
+.rot-row i.z { background: var(--hair); opacity: 1; }
+.rot-row i.qs { margin-left: 3px; }
+.rot-head { height: 20px; }
+.rot-head .rq { grid-column: span 12; text-align: center; font: 600 12px var(--sans); color: var(--muted); }
+.rot .rm { text-align: right; font: 600 13px var(--sans); color: var(--muted); }
+.rot .rn { font: 600 14px var(--sans); color: var(--ink); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px; }
+.rot .rn:hover { color: var(--blue); }
+.rot .rn .short { display: none; }
+@media (max-width: 640px) { .rot-row { grid-template-columns: 88px repeat(48, minmax(0, 1fr)) 28px; column-gap: 0; } .rot-row i { height: 15px; } .rot-row i.qs { margin-left: 2px; } .rot .rn { font-size: 13px; } .rot .rn .full { display: none; } .rot .rn .short { display: inline; } }
