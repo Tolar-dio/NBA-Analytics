@@ -31,12 +31,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check the private-data token
+      # The secret may be a token made for another private repo (Ice Sheet's reads Tolar-dio/nhl-private); say
+      # exactly what's wrong before the checkout fails with a vague "repository not found"
+      - name: Check the private-data token can read nba-private
         env:
-          HAS_TOKEN: ${{ secrets.PRIVATE_DATA_TOKEN != '' }}
+          TOKEN: ${{ secrets.PRIVATE_DATA_TOKEN }}
         run: |
-          if [ "$HAS_TOKEN" != "true" ]; then
+          if [ -z "$TOKEN" ]; then
             echo "::error::Add the PRIVATE_DATA_TOKEN secret (a read-only token for Tolar-dio/nba-private)"
+            exit 1
+          fi
+          repo=$(curl -sS -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github+json" https://api.github.com/repos/Tolar-dio/nba-private)
+          files=$(curl -sS -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github+json" https://api.github.com/repos/Tolar-dio/nba-private/contents/scripts)
+          echo "nba-private: repository HTTP $repo, contents HTTP $files"
+          if [ "$repo" = "401" ]; then
+            echo "::error::PRIVATE_DATA_TOKEN is expired or revoked. Make a new one (Contents: read-only on nba-private) and replace the secret."
+            exit 1
+          fi
+          if [ "$repo" != "200" ] || [ "$files" != "200" ]; then
+            echo "::error::PRIVATE_DATA_TOKEN can't read Tolar-dio/nba-private. In GitHub > Settings > Developer settings > Fine-grained tokens, open the token, add nba-private under Repository access with Contents: Read-only, and save. The token's value doesn't change, so the secret can stay as it is."
             exit 1
           fi
 
