@@ -2,5 +2,6 @@ __pycache__/
 analysis/output/
 site/data/
 
-# the private repo's tables, checked out by the nightly; never commit
+# the private repo (checked out by the nightly, or a symlink locally); never commit
+private
 private/
