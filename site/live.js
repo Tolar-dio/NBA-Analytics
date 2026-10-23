@@ -32,6 +32,7 @@ async function pollScores() {
   catch (e) { Live.failed++; }
   renderStrip();
   if (location.hash.replace(/^#/, "").split("/")[0] === "games") renderToday();
+  if (/^#?(tonight|preview)?(\/|$)/.test(location.hash.replace(/^#/, "")) && typeof tonightLive === "function") tonightLive();
   const games = (Live.scores && Live.scores.games) || [];
   const soon = games.some((g) => g.state === "scheduled" && g.tip && new Date(g.tip) - Date.now() < 45 * 60000);
   const live = games.some((g) => LIVE_STATES.has(g.state));

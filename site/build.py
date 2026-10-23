@@ -48,6 +48,8 @@ def clean(v):
         return {k: clean(x) for k, x in v.items()}
     if isinstance(v, (list, tuple)):
         return [clean(x) for x in v]
+    if isinstance(v, np.bool_):
+        return bool(v)
     if isinstance(v, (np.integer,)):
         return int(v)
     if isinstance(v, (np.floating, float)):
@@ -240,6 +242,7 @@ def players(season, D, lg):
 def teams(season, D, lg, lt):
     sh = D["shots"][D["shots"].game_id.isin(D["reg_ids"]) & (D["shots"].heave == 0)]
     games = D["games"]
+    zones = {}
     gl = pd.read_csv(out_path(season, "games_x.csv")) if os.path.exists(out_path(season, "games_x.csv")) else None
     for r in lt.itertuples(index=False):
         tid, ab = r.team_id, r.abbr
@@ -261,14 +264,16 @@ def teams(season, D, lg, lt):
                     row += [m.x_home if home else m.x_away, m.x_away if home else m.x_home,
                             m.win_home if home else 1 - m.win_home]
             res.append(row)
+        zones[ab] = {"for": zone_table(own, lg["zones"]), "against": zone_table(against, lg["zones"])}
         dump(f"team/{season}/{ab}.json", {
             "season": season, "team": clean(next(iter(records(lt[lt.team_id == tid])))),
             "players": records(pl, [c for c in PCOLS if c in pl.columns]),
             "lineups": records(lu, ["players", "unit", "min", "poss", "ortg", "drtg", "net", "xnet"]),
             "results_cols": ["game_id", "date", "type", "opp", "home", "own", "opp_pts", "x_own", "x_opp", "win_x"],
             "results": res,
-            "zones_for": zone_table(own, lg["zones"]), "zones_against": zone_table(against, lg["zones"]),
+            "zones_for": zones[ab]["for"], "zones_against": zones[ab]["against"],
         })
+    return zones
 
 
 # ------------------------------------------------------------------ games
@@ -382,20 +387,38 @@ def shot_values():
 
 
 def injuries():
-    """The latest injury report from the nightly pull: who's out or questionable, when they're expected back, and
-    the report's note (shortened)."""
+    """The latest injury report: the nightly pull's league-wide list, with each team playing today replaced by its
+    list from the newest pre-game snapshot when that is newer. Who's out or questionable, when they're expected
+    back, and the report's note (shortened)."""
     import glob
     import gzip
-    files = sorted(glob.glob(os.path.join(os.path.dirname(TABLES), "raw", "injuries", "*.json.gz")))
+    raw = os.path.join(os.path.dirname(TABLES), "raw")
+    files = sorted(glob.glob(os.path.join(raw, "injuries", "*.json.gz")))
     if not files:
-        return
+        return []
     with gzip.open(files[-1], "rt", encoding="utf-8") as f:
         rep = json.load(f)
+    entries, as_of = list(rep.get("data", [])), rep.get("taken_at") or ""
+    snaps = {}
+    for path in sorted(glob.glob(os.path.join(raw, str(CUR), "pregame", "*", "*.json.gz")))[-40:]:
+        with gzip.open(path, "rt", encoding="utf-8") as f:
+            sn = json.load(f)
+        g = sn.get("game") or {}
+        for side in ("home_team", "visitor_team"):
+            tid = (g.get(side) or {}).get("id")
+            if tid and sn.get("taken_at", "") > max(as_of, snaps.get(tid, ("", None))[0]):
+                snaps[tid] = (sn["taken_at"], [r for r in sn.get("injuries") or []
+                                              if (r.get("player") or {}).get("team_id") == tid])
+    if snaps:
+        entries = [r for r in entries if (r.get("player") or {}).get("team_id") not in snaps]
+        for _, rows_ in snaps.values():
+            entries += rows_
+        as_of = max([as_of] + [t for t, _ in snaps.values()])
     teams = table(CUR, "teams") if os.path.exists(os.path.join(TABLES, str(CUR), "teams.csv.gz")) else table(PREV, "teams")
     abbr = dict(zip(teams.team_id, teams.abbr))
     order = {"Out": 0, "Doubtful": 1, "Questionable": 2, "Day-To-Day": 3, "Probable": 4, "Available": 5}
     rows = []
-    for r in rep.get("data", []):
+    for r in entries:
         p = r.get("player") or {}
         note = re.sub(r"\s+", " ", r.get("description") or "").strip()
         note = re.sub(r"^Injury/Illness - ", "", note)
@@ -406,14 +429,15 @@ def injuries():
                      "team": abbr.get(p.get("team_id")), "status": r.get("status"), "back": r.get("return_date"),
                      "note": note})
     rows.sort(key=lambda r: (r["team"] or "", order.get(r["status"], 9), r["name"]))
-    dump("injuries.json", {"as_of": rep.get("taken_at"), "players": rows})
-    print(f"injuries: {len(rows)} players as of {rep.get('taken_at')}")
+    dump("injuries.json", {"as_of": as_of, "players": rows})
+    print(f"injuries: {len(rows)} players as of {as_of}")
+    return rows
 
 
 def main():
     if os.path.isdir(DATA):
         shutil.rmtree(DATA)
-    seasons = []
+    seasons, lts, zones, lgs = [], {}, {}, {}
     for season in (CUR, PREV):
         if not os.path.exists(os.path.join(TABLES, str(season), "games.csv.gz")) or \
                 not os.path.exists(out_path(season, "players.csv")):
@@ -422,14 +446,20 @@ def main():
         D = season_data(season)
         lg, lt = league(season, D)
         games_out(season, D)          # first: writes games_x.csv for the team pages
-        teams(season, D, lg, lt)
+        zones[season] = teams(season, D, lg, lt)
+        lts[season], lgs[season] = lt, lg
         players(season, D, lg)
         n = int(len(D["reg_ids"]))
         last = D["games"].date.max()
         seasons.append({"season": season, "label": LABEL(season), "games": n, "through": last})
         print(f"{season}: {n} regular-season games through {last}")
-    injuries()
+    inj = injuries()
     shot_values()
+    if CUR in lts and PREV in lts:
+        import tonight
+        import pulse
+        tonight.build(dump, lts, zones, inj, lgs)
+        pulse.build(dump)
     news = os.path.join(ROOT, "data", "news", "index.json")
     if os.path.exists(news):            # a copy as of this build; the site prefers the repository's live file
         shutil.copy(news, os.path.join(DATA, "news.json"))

@@ -583,11 +583,11 @@ function flowChart(g, shots) {
 }
 
 // ------------------------------------------------------------------ router and masthead
-const ROUTES = { league: renderLeague, teams: renderTeamsHome, players: renderPlayersHome, games: renderGames, news: renderNews };
+const ROUTES = { tonight: renderTonight, pulse: renderPulse, league: renderLeague, teams: renderTeamsHome, players: renderPlayersHome, games: renderGames, news: renderNews };
 async function route() {
   const view = $("#view");
-  const [tab, a, b] = (location.hash.replace(/^#/, "") || "league").split("/");
-  const tabName = tab === "game" || tab === "live" ? "games" : tab;
+  const [tab, a, b] = (location.hash.replace(/^#/, "") || "tonight").split("/");
+  const tabName = tab === "game" || tab === "live" ? "games" : tab === "preview" ? "tonight" : tab;
   $$(".tabs a").forEach((x) => (x.getAttribute("aria-current") === "page" ? x.removeAttribute("aria-current") : 0));
   $(`.tabs a[data-tab="${tabName}"]`)?.setAttribute("aria-current", "page");
   view.innerHTML = `<p class="loading">Loading</p>`;
@@ -598,12 +598,13 @@ async function route() {
     else if (tab === "about") renderAbout(view, a);
     else if (tab === "news") await renderNews(view, a);
     else if (tab === "live" && a) await renderLive(view, a);
+    else if (tab === "preview" && a) await renderPreview(view, a);
     else await (ROUTES[tab] || renderLeague)(view);
   } catch (e) {
     console.error(e);
     view.innerHTML = `<section class="zone"><h1>That page didn't load</h1><p class="lede">We couldn't load the numbers for it (${esc(e.message)}). Try again in a minute, or start from <a href="#league">the league</a>.</p></section>`;
   }
-  if (!location.hash.includes("/") || tab === "game" || tab === "live") window.scrollTo(0, 0);
+  if (!location.hash.includes("/") || tab === "game" || tab === "live" || tab === "preview") window.scrollTo(0, 0);
 }
 function setSeason(s) {
   S.season = +s; store.set("board-season", String(s)); S.pMin = null;

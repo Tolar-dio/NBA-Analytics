@@ -25,13 +25,15 @@
 <body>
 <header class="masthead">
   <div class="masthead-inner">
-    <a class="wordmark" href="#league">The Board</a>
+    <a class="wordmark" href="#tonight">The Board</a>
     <p class="freshness" id="freshness">Loading the latest numbers</p>
     <label class="season-pick"><span class="sr">Season</span><select id="seasonPick" aria-label="Season"></select></label>
     <button class="pill" id="teamBtn" type="button">Your team</button>
     <button class="pill" id="themeToggle" type="button" aria-label="Switch between whiteboard and chalkboard">Chalkboard</button>
   </div>
   <nav class="tabs" aria-label="Sections">
+    <a href="#tonight" data-tab="tonight">Tonight</a>
+    <a href="#pulse" data-tab="pulse">Pulse</a>
     <a href="#league" data-tab="league">League</a>
     <a href="#teams" data-tab="teams">Teams</a>
     <a href="#players" data-tab="players">Players</a>
@@ -54,6 +56,8 @@
 <script src="about.js"></script>
 <script src="news.js"></script>
 <script src="live.js"></script>
+<script src="tonight.js"></script>
+<script src="pulse.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
