@@ -17,8 +17,10 @@ per-shot NBA model is published to compare against (as far as we know), so the z
 Heaves (missed end-of-period heaves aren't attempts in the box) are left out of training and valued at the
 league's heave rate.
 
-Output: analysis/output/<season>/shots_xp.csv.gz (game_id, order, team_id, shooter, made, value, p_make, xpts) and
-shot_quality.json (metrics, calibration).
+Output: analysis/output/<season>/shots_xp.csv.gz (game_id, order, team_id, shooter, made, value, p_make, xpts,
+xpts_trip, heave, poss, seq, k), trips.json (second-chance parameters) and shot_quality.json (metrics,
+calibration). Use xpts for judging a shooter's shots one at a time, xpts_trip for anything summed over a team, a
+lineup or a game (see trips()).
 """
 import json
 import sys
@@ -38,7 +40,9 @@ FAMILIES = ["dunk", "layup", "tip", "putback", "alley oop", "hook", "float", "ba
 
 def possession_context(plays, games):
     """For each field-goal attempt: seconds since his team gained the ball, how, second-chance flags, score margin
-    before the shot, and whether it came in the last 4 seconds of a period."""
+    before the shot, whether it came in the last 4 seconds of a period, and which possession it belongs to (a new
+    one starts after a make, a made last free throw, a defensive rebound, a turnover or a new period; an offensive
+    rebound keeps it going)."""
     teams = {r.game_id: (r.home_id, r.away_id) for r in games.itertuples(index=False)}
     rows = []
     for gid, g in plays.groupby("game_id", sort=False):
@@ -46,36 +50,72 @@ def possession_context(plays, games):
         other = {home: away, away: home}
         owner, start_t, kind, oreb_t, period = None, 0.0, "period", None, None
         prev_h, prev_a = 0, 0
+        poss, seq = 0, 0
+
+        def new(team, t, k):
+            nonlocal owner, start_t, kind, oreb_t, poss
+            owner, start_t, kind, oreb_t = team, t, k, None
+            poss += 1
+
         for r in g.itertuples(index=False):
             if r.period != period:
-                period, owner, start_t, kind, oreb_t = r.period, None, r.t, "period", None
+                period = r.period
+                new(None, r.t, "period")
             typ, team = r.type, r.team_id
             text = r.text if isinstance(r.text, str) else ""
             if r.shooting == 1 and "Free Throw" not in typ:
                 if owner is None:
                     owner = team
                 same = owner == team
+                if not same:          # the feed missed a change of possession
+                    new(team, r.t, "unknown")
                 margin = (prev_h - prev_a) if team == home else (prev_a - prev_h)
                 rows.append((gid, r.order, (r.t - start_t) if same else np.nan, kind if same else "unknown",
                              int(same and oreb_t is not None and r.t - oreb_t <= 3), int(same and oreb_t is not None),
-                             margin, int(r.clock_left <= 4)))
+                             margin, int(r.clock_left <= 4), poss, seq))
+                seq += 1
                 if r.scoring == 1:
-                    owner, start_t, kind, oreb_t = other.get(team), r.t, "made", None
+                    new(other.get(team), r.t, "made")
             elif "Free Throw" in typ:
                 if r.scoring == 1 and any(k in typ for k in ("1 of 1", "2 of 2", "3 of 3")):
-                    owner, start_t, kind, oreb_t = other.get(team), r.t, "ft", None
+                    new(other.get(team), r.t, "ft")
             elif "Defensive Rebound" in typ:
-                owner, start_t, kind, oreb_t = team, r.t, "dreb", None
+                new(team, r.t, "dreb")
             elif "Offensive Rebound" in typ:
                 if owner != team:
-                    owner, start_t, kind = team, r.t, "dreb"   # the feed missed a change; treat as a fresh start
+                    new(team, r.t, "dreb")   # the feed missed a change; treat as a fresh start
                 oreb_t = r.t
             elif "Turnover" in typ:
-                owner, start_t, kind, oreb_t = other.get(team), r.t, "steal" if "steals" in text else "to", None
+                new(other.get(team), r.t, "steal" if "steals" in text else "to")
             if pd.notna(r.home_score):
                 prev_h, prev_a = r.home_score, r.away_score
     return pd.DataFrame(rows, columns=["game_id", "order", "since_start", "start_kind", "putback", "second_chance",
-                                       "margin", "late"])
+                                       "margin", "late", "poss", "seq"])
+
+
+def trips(df, k_prior=50):
+    """Expected points per trip down the floor. Summing every shot's expected points credits a team for shots that
+    only happened because the ones before missed (a 107-shot, 26-offensive-rebound night "deserved" 149 points).
+    Instead each possession counts its first shot at its own quality, plus, if that misses, the team's rate of
+    getting another shot off an offensive rebound (its season rate, shrunk toward the league with 50 misses) times
+    the league's points from those second chances. Totals match what actually went in; later shots in a possession
+    count as 0 here. Returns per-shot xpts_trip and the parameters."""
+    df = df.sort_values(["game_id", "seq"]).copy()
+    df["k"] = df.groupby(["game_id", "poss"]).cumcount()
+    first = df[df.k == 0]
+    cont = df[df.k >= 1].assign(p=df.made * df.value).groupby(["game_id", "poss"]).agg(team_id=("team_id", "first"),
+                                                                                         pts=("p", "sum"))
+    n_cont = cont.groupby("team_id").size()
+    first_miss = (1 - first.made).groupby(first.team_id).sum()
+    lg_rate = n_cont.sum() / first_miss.sum()
+    rate = ((n_cont.reindex(first_miss.index).fillna(0) + k_prior * lg_rate) / (first_miss + k_prior))
+    q2, q3 = float((cont.pts == 2).mean()), float((cont.pts == 3).mean())
+    c = 2 * q2 + 3 * q3
+    r = df.team_id.map(rate).fillna(lg_rate)
+    df["xpts_trip"] = np.where(df.k == 0, df.p_make * df.value + (1 - df.p_make) * r * c, 0.0)
+    params = {"second_chance_rate_league": float(lg_rate), "second_chance_points": c, "q2": q2, "q3": q3,
+              "rate_by_team": {int(k): float(v) for k, v in rate.items()}}
+    return df[["xpts_trip", "k"]], params
 
 
 def features(shots, ctx):
@@ -172,13 +212,28 @@ def main():
 
     h = s[heave].copy()
     h["p_make"], h["xpts"] = heave_rate, heave_rate * h.value
-    allx = pd.concat([t, h])[["season", "game_id", "order", "team_id", "shooter", "made", "value", "p_make", "xpts",
-                              "heave"]]
+    allx = pd.concat([t, h], ignore_index=True)
+    allx["xpts_trip"], allx["k"] = np.nan, 0
+    trip_params = {}
+    for se in seasons:
+        m = allx.season == se
+        tr, prm = trips(allx[m])
+        allx.loc[tr.index, ["xpts_trip", "k"]] = tr.values
+        trip_params[se] = prm
+        fgp = (allx[m].made * allx[m].value).sum()
+        res.setdefault("trips", {})[se] = {"fg_points": int(fgp), "sum_xpts": round(float(allx[m].xpts.sum())),
+                                          "sum_xpts_trip": round(float(allx[m].xpts_trip.sum())),
+                                          **{k: v for k, v in prm.items() if k != "rate_by_team"}}
+    allx = allx[["season", "game_id", "order", "team_id", "shooter", "made", "value", "p_make", "xpts", "xpts_trip",
+                 "heave", "poss", "seq", "k"]]
     for se in seasons:
         allx[allx.season == se].drop(columns="season").round(4).to_csv(out_path(se, "shots_xp.csv.gz"), index=False)
+        with open(out_path(se, "trips.json"), "w") as f:
+            json.dump(trip_params[se], f, indent=1)
     with open(out_path(seasons[-1], "shot_quality.json"), "w") as f:
         json.dump(res, f, indent=1, default=str)
-    print(json.dumps({k: res[k] for k in ("seasons", "shots", "make_rate", "pps", "models", "chosen")}, indent=1))
+    print(json.dumps({k: res[k] for k in ("seasons", "shots", "make_rate", "pps", "models", "chosen",
+                                          "trips")}, indent=1))
     print("calibration by zone [zone, n, actual, predicted]:")
     for r in res["calibration_by_zone"]:
         print("  ", r)

@@ -1,0 +1,88 @@
+name: Build The Board
+
+# Builds the tables from the private repo's raw data, runs the models, writes the site's JSON and deploys site/ to
+# GitHub Pages. Normally started by the private repo's nightly pull as soon as new games land (DISPATCH_TOKEN there);
+# the schedule is a fallback, and "Run workflow" works any time.
+#
+# This repository and its logs are public: the private data is checked out into private/ (gitignored), the tables
+# are built in the runner and never committed, and nothing here prints table rows.
+
+on:
+  schedule:
+    - cron: "53 13 * * *"   # fallback, 7:53 AM Denver in daylight time
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: board-site
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the private-data token
+        env:
+          HAS_TOKEN: ${{ secrets.PRIVATE_DATA_TOKEN != '' }}
+        run: |
+          if [ "$HAS_TOKEN" != "true" ]; then
+            echo "::error::Add the PRIVATE_DATA_TOKEN secret (a read-only token for Tolar-dio/nba-private)"
+            exit 1
+          fi
+
+      - name: Private data (raw files and the table builder, read-only)
+        uses: actions/checkout@v4
+        with:
+          repository: Tolar-dio/nba-private
+          token: ${{ secrets.PRIVATE_DATA_TOKEN }}
+          path: private
+          sparse-checkout: |
+            bdl/raw
+            scripts
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install analysis libraries
+        run: pip install -r requirements.txt
+
+      - name: Build the tables (in the runner only)
+        run: python private/scripts/tables.py > /dev/null
+
+      - name: Shot quality, team ratings, player tables
+        working-directory: analysis
+        run: |
+          python shot_quality.py 2025 2026 > /dev/null
+          for s in 2025 2026; do
+            python teams.py $s > /dev/null
+            python players.py $s > /dev/null
+          done
+
+      - name: Build the site's data
+        run: python site/build.py
+
+      - name: Stage only the public files
+        run: |
+          mkdir -p _site
+          cp site/index.html site/style.css site/*.js _site/
+          cp -r site/data _site/data
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4

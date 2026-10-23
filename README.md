@@ -1,9 +1,27 @@
 # The Board
 
-An NBA analytics site in the making: team strength from possessions and shot quality, who plays and how much, player projections graded in public against what happened and against the sportsbooks. The basketball sibling of [Ice Sheet](https://tolar-dio.github.io/NHL-Analytics/).
+**Site:** https://tolar-dio.github.io/NBA-Analytics/ (rebuilt every morning after the night's games)
 
-Nothing is live yet. The data pull runs in a private repository (the data is licensed and stays there); this repository will hold the models, the site and the frozen pre-game numbers the site shows, so the track record can be checked.
+NBA analytics for every fan, the basketball sibling of [Ice Sheet](https://tolar-dio.github.io/NHL-Analytics/). Teams measured per possession, every shot valued by how often that kind of shot goes in, who was on the floor rebuilt for every play, and plain words on how much each number can be trusted.
 
-Data: [BALLDONTLIE](https://www.balldontlie.io/). Methods, credits and the build plan are in [CLAUDE.md](CLAUDE.md).
+## What's on it
 
-For information and entertainment. If gambling stops being fun, call 1-800-GAMBLER.
+- **League**: every team's offense and defense per 100 possessions, with a switch to what their shots say (shot-making luck taken out), the four factors, and which teams' results are running ahead of or behind their shots.
+- **Teams**: ratings and ranks, the four factors for and against, where shots come from against the league, players with usage and on/off, the five-man lineups each team trusts, and every result with how often the shots would have won it.
+- **Players**: search and leaderboards for scoring, shooting against expectation, on/off and rim defense. Player pages have every shot drawn the way a coach would (O for a make, X for a miss), how he scores by zone against the league, on/off, rim protection and his game log.
+- **Games**: every game with quarter scores, a score-margin chart against what the shots were worth, both teams' shots and the box score.
+
+No default team: pick yours with the button at the top and it's highlighted everywhere. Your team, followed players, season and theme stay in your browser.
+
+## How it's built
+
+The data comes from [BALLDONTLIE](https://www.balldontlie.io) and is pulled nightly into a private repository (it's licensed, so the raw files stay there). This repository holds the models, the site and its build:
+
+- `analysis/shot_quality.py`: expected points per shot (where, what kind of shot, how the play started), and per trip down the floor.
+- `analysis/teams.py`, `analysis/players.py`: team ratings, four factors and luck checks; usage, on/off and lineups from rebuilt five-man stints.
+- `site/build.py` writes the site's JSON; `site/index.html`, `app.js`, `court.js`, `about.js` and `style.css` are a static page that reads it.
+- `.github/workflows/site.yml` builds everything and deploys to GitHub Pages. It needs the `PRIVATE_DATA_TOKEN` secret (read-only access to the private data).
+
+Methods, tests and what didn't work are in [CLAUDE.md](CLAUDE.md).
+
+Our numbers are for information and entertainment, not betting advice. Gambling problem? Call 1-800-GAMBLER.

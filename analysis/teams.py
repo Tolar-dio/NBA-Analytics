@@ -1,4 +1,4 @@
-"""Team ratings: pace, offensive/defensive/net rating per 100 possessions, the four factors for and against, luck
+"""Team ratings (regular season; the NBA Cup final does not count, as in the standings): pace, offensive/defensive/net rating per 100 possessions, the four factors for and against, luck
 checks, and shot quality from analysis/shot_quality.py.
 
     python analysis/teams.py 2025        # writes analysis/output/2025/teams.csv and prints the table
@@ -13,8 +13,9 @@ Luck checks, the things that swing a rating without saying much about the team:
   opp_ft_vs_lg   opponents' free-throw %: no defensive control at all.
   shotmaking     points per shot above shot-quality expectation (own, and opponents'). Some of it is skill, a lot of
                  it is noise over a few hundred shots.
-  x_net          net rating with every field goal valued at its expected points instead of what happened (free
-                 throws and turnovers as they happened): what the shot mix alone says about the team.
+  x_net          net rating with every trip's shots valued at their expected points instead of what happened
+                 (first shot at its quality plus the team's usual second chances; free throws and turnovers as
+                 they happened): what the shots alone say about the team.
 """
 import sys
 
@@ -28,17 +29,18 @@ def ratings(season):
     tg = table(season, "team_games")
     games = table(season, "games")
     tg = tg.merge(games[["game_id", "game_type"]], on="game_id")
-    tg = tg[tg.game_type.isin(["regular", "ist"])]
+    tg = tg[tg.game_type == "regular"]
     tg["poss_g"] = (tg.poss + tg.opp_poss) / 2
     xp = pd.read_csv(out_path(season, "shots_xp.csv.gz"))
     xp = xp[xp.heave == 0]
-    by_team = xp.groupby(["game_id", "team_id"]).agg(fga=("made", "size"), pts=("made", lambda m: 0),
-                                                     xpts=("xpts", "sum")).reset_index()
-    pts = xp.assign(p=xp.made * xp.value).groupby(["game_id", "team_id"]).p.sum().rename("fg_pts").reset_index()
-    by_team = by_team.drop(columns="pts").merge(pts, on=["game_id", "team_id"])
-    tg = tg.merge(by_team.rename(columns={"fga": "sq_fga", "xpts": "fg_xpts"}), on=["game_id", "team_id"], how="left")
+    # per-shot expected points (xpts) for shot quality and shot-making; per-trip (xpts_trip) for expected ratings
+    xp = xp.assign(p=xp.made * xp.value)
+    by_team = xp.groupby(["game_id", "team_id"]).agg(fga=("made", "size"), xpts=("xpts", "sum"),
+                                                     xtrip=("xpts_trip", "sum"), fg_pts=("p", "sum")).reset_index()
+    tg = tg.merge(by_team.rename(columns={"fga": "sq_fga", "xpts": "fg_xpts", "xtrip": "fg_xtrip"}),
+                  on=["game_id", "team_id"], how="left")
     opp = by_team.rename(columns={"team_id": "opp_id", "fga": "opp_sq_fga", "xpts": "opp_fg_xpts",
-                                  "fg_pts": "opp_fg_pts"})
+                                  "xtrip": "opp_fg_xtrip", "fg_pts": "opp_fg_pts"})
     tg = tg.merge(opp, on=["game_id", "opp_id"], how="left")
 
     s = tg.groupby(["team_id", "team"]).sum(numeric_only=True)
@@ -66,8 +68,8 @@ def ratings(season):
     out["shotmaking"] = (s.fg_pts - s.fg_xpts) / s.sq_fga
     out["opp_shotmaking"] = (s.opp_fg_pts - s.opp_fg_xpts) / s.opp_sq_fga
     # expected net: field goals at expected value, everything else as it happened
-    x_pts = s.pts - s.fg_pts + s.fg_xpts
-    x_opp = s.opp_pts - s.opp_fg_pts + s.opp_fg_xpts
+    x_pts = s.pts - s.fg_pts + s.fg_xtrip
+    x_opp = s.opp_pts - s.opp_fg_pts + s.opp_fg_xtrip
     out["x_ortg"] = 100 * x_pts / s.poss_g
     out["x_drtg"] = 100 * x_opp / s.poss_g
     out["x_net"] = out.x_ortg - out.x_drtg
@@ -89,8 +91,10 @@ def main():
     for h, q in tg.groupby("half"):
         s = q.groupby("team_id").sum(numeric_only=True)
         net = 100 * (s.pts - s.opp_pts) / s.poss_g
-        xnet = 100 * ((s.pts - s.fg_pts + s.fg_xpts) - (s.opp_pts - s.opp_fg_pts + s.opp_fg_xpts)) / s.poss_g
+        xnet = 100 * ((s.pts - s.fg_pts + s.fg_xtrip) - (s.opp_pts - s.opp_fg_pts + s.opp_fg_xtrip)) / s.poss_g
         halves["first" if h else "second"] = pd.DataFrame({"net": net, "xnet": xnet})
+    if "second" not in halves or tg.groupby("team_id").size().min() < 10:
+        return   # too early in the season for a split-half check
     a, b = halves["first"], halves["second"]
     print(f"\nsplit-half check ({len(a)} teams): first-half net rating vs second-half net r = "
           f"{np.corrcoef(a.net, b.net)[0, 1]:.3f}; first-half expected net vs second-half net r = "

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Board: NBA analytics, explained</title>
+<meta name="description" content="Every NBA team, player and game, explained with the numbers behind it: offense and defense per 100 possessions, what each team's shots say it deserved, shot charts for every player, lineups and on/off.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="The Board">
+<meta property="og:title" content="The Board: NBA analytics, explained">
+<meta property="og:description" content="Team ratings, shot quality, shot charts, lineups and on/off for every NBA team and player. Updated every morning.">
+<meta property="og:url" content="https://tolar-dio.github.io/NBA-Analytics/">
+<meta name="twitter:card" content="summary">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1f2925" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23f3f5f5'/%3E%3Crect x='3' y='3' width='58' height='58' rx='10' fill='none' stroke='%23b3bbc2' stroke-width='4'/%3E%3Ccircle cx='22' cy='32' r='9' fill='none' stroke='%231d56c9' stroke-width='5'/%3E%3Cpath d='M37 23l14 18M51 23L37 41' stroke='%2316191d' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wdth,wght@0,62..125,300..900;1,62..125,400..700&family=Kalam:wght@700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script>
+  try { const t = localStorage.getItem("board-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+</head>
+<body>
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="wordmark" href="#league">The Board</a>
+    <p class="freshness" id="freshness">Loading the latest numbers</p>
+    <label class="season-pick"><span class="sr">Season</span><select id="seasonPick" aria-label="Season"></select></label>
+    <button class="pill" id="teamBtn" type="button">Your team</button>
+    <button class="pill" id="themeToggle" type="button" aria-label="Switch between whiteboard and chalkboard">Chalkboard</button>
+  </div>
+  <nav class="tabs" aria-label="Sections">
+    <a href="#league" data-tab="league">League</a>
+    <a href="#teams" data-tab="teams">Teams</a>
+    <a href="#players" data-tab="players">Players</a>
+    <a href="#games" data-tab="games">Games</a>
+  </nav>
+</header>
+
+<main id="view" tabindex="-1"></main>
+
+<footer class="colophon">
+  <p class="foot-links"><a href="#about">About The Board</a><a href="#about/methods">How the numbers work</a><a href="#about/glossary">Glossary</a><a href="#about/data">Data and credits</a><a href="#about/privacy">Privacy</a></p>
+  <p>The Board is an independent basketball analytics site, not affiliated with or endorsed by the NBA, its teams or any sportsbook. Game, play-by-play and player data from <a href="https://www.balldontlie.io">BALLDONTLIE</a>. Shot quality, ratings, on/off and lineup numbers are our own.</p>
+  <p>Our numbers are for information and entertainment, not betting advice. If you bet, do it only where it's legal and you're of age. Gambling problem? Call 1-800-GAMBLER.</p>
+</footer>
+
+<div class="tip" id="tip" role="tooltip" hidden></div>
+<script src="court.js"></script>
+<script src="about.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
