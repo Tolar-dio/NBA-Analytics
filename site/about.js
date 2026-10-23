@@ -36,11 +36,12 @@ function renderAbout(view, section) {
       <dt>Corner three</dt><dd>A three from the short stretch along the baseline, 22 feet from the rim instead of 23.75. The best shot in basketball outside the paint.</dd>
       </dl>`],
     data: ["Data and credits", `
-      <p>Games, box scores, play-by-play with shot locations, lineups, player tracking and injury reports come from <a href="https://www.balldontlie.io">BALLDONTLIE</a>. Shot quality, ratings, on/off, lineups and everything labelled "from shots" are our own.</p>
+      <p>Games, box scores, play-by-play with shot locations, lineups, player tracking, injury reports and live scores come from <a href="https://www.balldontlie.io">BALLDONTLIE</a>. Shot quality, ratings, on/off, lineups and everything labelled "from shots" are our own.</p>
+      <p>News headlines and short teasers come from the public feeds of The Athletic, CBS Sports, Yahoo Sports and SB Nation, and link to the full stories on their sites. Videos are the NBA's own, from its YouTube channel, played through YouTube. Podcast episodes play from each show's public feed, the same way a podcast app gets them.</p>
       <p>We don't use NBA.com's or ESPN's data, because their terms don't allow it for a site like this, and we don't rehost video or photos.</p>`],
     privacy: ["Privacy", `
       <p>No accounts, no ads, no tracking. Your team, the players you follow, your season and your light or dark setting are saved in your own browser (local storage) and never leave it. Clear your browser's site data to remove them.</p>
-      <p>The site loads its fonts from Google Fonts, which sees your IP address like any web request.</p>`],
+      <p>The site loads its fonts from Google Fonts, news from GitHub, and live scores from our relay on Cloudflare; each sees your IP address like any web request. Videos load YouTube only when you press play, through its privacy-enhanced player, and podcast audio loads from the show's host only when you press play.</p>`],
     gambling: ["Responsible gambling", `
       <p>Our numbers are estimates for information and entertainment, not betting advice. If you bet, do it only where it's legal and you're of age, set a budget before you start, and never chase losses.</p>
       <p>If gambling has stopped being fun, call or text 1-800-GAMBLER, any time.</p>`],

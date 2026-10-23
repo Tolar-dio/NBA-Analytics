@@ -268,6 +268,7 @@ async function renderTeam(view, abbr) {
     </div>
     ${luckLines.length ? `<p class="lede">${luckLines.map(esc).join(" ")}</p>` : ""}
   </section>
+  <section class="zone grid-2 extras"><div id="tOut"></div><div id="tNews"></div></section>
   <section class="zone grid-2">
     <div><h2>The four factors</h2><p class="lede">What wins possessions: making shots, not turning it over, second chances and getting to the line. Ranks are out of 30.</p>
       <div class="table-wrap"><table><thead><tr><th class="l nosort"></th><th class="nosort">Their offense</th><th class="nosort">Their defense</th></tr></thead><tbody>
@@ -285,6 +286,8 @@ async function renderTeam(view, abbr) {
   <section class="zone"><h2>Lineups they trust</h2><p class="lede">Five-man groups with the most possessions together. Even the most-used lineups play only a few hundred possessions, so treat the ratings as hints.</p><div id="tLineups"></div></section>
   <section class="zone"><h2>Results</h2><p class="lede">Every game, with how often the shots each team got would have won it.</p><div id="tResults"></div></section>`;
   $("#mineBtn").addEventListener("click", () => { store.set("board-team", mine ? "" : abbr); applyTeamButton(); renderTeam(view, abbr); });
+  if (T.season === D.meta.current) teamExtras(abbr).then(() => { const x = $(".extras"); if (x && !x.children.length) x.remove(); });
+  else $(".extras")?.remove();
   const drawZones = () => { $("#tZones").innerHTML = zonesTable(S.zoneSide === "for" ? T.zones_for : T.zones_against, S.zoneSide === "for" ? "Their" : "Opp"); };
   $$("[data-side]", view).forEach((b) => b.addEventListener("click", () => { S.zoneSide = b.dataset.side; $$("[data-side]", view).forEach((x) => x.setAttribute("aria-pressed", x === b)); drawZones(); }));
   drawZones();
@@ -411,6 +414,7 @@ async function renderPlayer(view, id) {
   view.innerHTML = `<a class="back" href="#players">All players</a>
   <section class="zone"><div class="head-row"><h1 class="grow">${esc(b.name || "")}</h1>${followBtn({ id: P.id, name: b.name, team: teams[teams.length - 1] })}</div>
     <p class="lede">${teams.map((t) => `<a href="#teams/${t}">${t}</a>`).join(", ")}${b.position ? `, ${esc(b.position)}` : ""}${b.height_in ? `, ${heightFt(b.height_in)}` : ""}${b.jersey ? `, #${esc(b.jersey)}` : ""}${b.draft_year ? `. Drafted ${b.draft_year}, round ${b.draft_round}, pick ${b.draft_number}` : ""}${b.college ? `. ${esc(b.college)}` : ""}.</p>
+    <div id="pInj"></div>
     <div class="strip">
       <div><b>${num(tot("pts") / gp)}</b><span>Points a game</span></div>
       <div><b>${num(tot("reb") / gp)}</b><span>Rebounds</span></div>
@@ -425,7 +429,9 @@ async function renderPlayer(view, id) {
   </section>
   <section class="zone" id="pOn"></section>
   <section class="zone" id="pDef"></section>
+  <section class="zone" id="pNews"></section>
   <section class="zone"><h2>Game log</h2><div id="pLog"></div></section>`;
+  if (P.season === D.meta.current) playerExtras(P.id); else $("#pNews")?.remove();
   const shots = P.shots.map((s) => ({ x: s[0], y: s[1], made: s[2], three: s[3], p: s[4] == null ? null : s[4] / 1000, g: log[s[5]] }));
   Court.draw($("#pCourt"), shots, {
     onPick(i) {
@@ -480,8 +486,10 @@ async function renderGames(view) {
   view.innerHTML = `<section class="zone"><h1>Games</h1>
     <p class="lede">Every game of ${seasonLabel(S.season)}, newest first. "Shots said" is how often the shots each team got would have won it: replay every trip with the same first shots, second chances at each team's usual rate and free throws as they went.</p>
     ${mine ? `<div class="controls"><div class="seg" role="group"><button type="button" data-gt="0" aria-pressed="${!S.gTeam}">All games</button><button type="button" data-gt="1" aria-pressed="${S.gTeam}">${esc(mine)} only</button></div></div>` : ""}
+    ${S.season === D.meta.current ? `<div id="gToday"></div>` : ""}
     ${shown.map((d) => `<h2 class="day">${dateLong(d)}</h2><div class="game-list">${list.filter((g) => g.date === d).map(gameRow).join("")}</div>`).join("")}
     ${days.length > shown.length ? `<button class="more" id="gMore" type="button">Earlier games</button>` : ""}</section>`;
+  renderToday();
   $("#gMore")?.addEventListener("click", () => { S.gDays += 7; renderGames(view); });
   $$("[data-gt]", view).forEach((b) => b.addEventListener("click", () => { S.gTeam = b.dataset.gt === "1"; S.gDays = 7; renderGames(view); }));
 }
@@ -515,6 +523,7 @@ async function renderGame(view, season, id) {
       <tr><td class="l">${esc(g.away)}</td>${g.quarters.away.map((v) => `<td>${v ?? ""}</td>`).join("")}<td><b>${g.away_score}</b></td></tr>
       <tr><td class="l">${esc(g.home)}</td>${g.quarters.home.map((v) => `<td>${v ?? ""}</td>`).join("")}<td><b>${g.home_score}</b></td></tr></tbody></table></div>
   </section>
+  <section class="zone" id="gHigh"></section>
   <section class="zone"><h2>Did the shots agree?</h2>
     ${w == null ? "" : `<div class="deserve"><span>${esc(g.away)} ${pct(1 - w, 0)}</span><div class="track" role="img" aria-label="${esc(g.home)} ${pct(w, 0)}"><span style="width:${100 * (1 - w)}%;background:var(--ink-2)"></span><span style="width:${100 * w}%"></span></div><span>${esc(g.home)} ${pct(w, 0)}</span></div>`}
     <p class="lede">${w == null ? "" : `Replay this game on the same shots and ${esc(w >= 0.5 ? g.home : g.away)} wins ${pct(Math.max(w, 1 - w), 0)} of the time. `}Their shots were worth ${num(g.x_home, 0)} points to ${num(g.x_away, 0)} for ${esc(g.away)}, free throws included as they went.${(w >= 0.5) !== hw && w != null ? ` ${esc(hw ? g.home : g.away)} won it anyway: the shots fell their way.` : ""}</p>
@@ -527,6 +536,7 @@ async function renderGame(view, season, id) {
   <section class="zone"><h2>Box score</h2><h3 style="margin:14px 0 6px">${esc(g.away)}</h3><div id="bAway"></div><h3 style="margin:20px 0 6px">${esc(g.home)}</h3><div id="bHome"></div>
     <p class="note">Minutes come from our own count of who was on the floor, play by play.</p></section>`;
   $("#gFlow").innerHTML = flowChart(g, shots);
+  gameHighlight(g.id);
   const name = (id) => g.names[id] || "";
   [["cAway", 1], ["cHome", 0]].forEach(([el, away]) => {
     const list = shots.filter((s) => s.away === away && !s.heave).map((s) => ({ ...s, p: s.p_milli == null ? null : s.p_milli / 1000 }));
@@ -551,13 +561,13 @@ async function renderGame(view, season, id) {
 }
 function flowChart(g, shots) {
   const W = Math.max(320, Math.min(1000, ($("#view").clientWidth || 900) - 32)), H = 220, m = { l: 36, r: 10, t: 12, b: 26 };
-  const end = 2880 + 300 * g.ot;
+  const end = 2880 + 300 * g.ot, stop = g.now_t != null ? Math.min(g.now_t, end) : end;   // live games stop at the last play
   // actual margin from the scoring flow; expected from each trip's shots plus free throws as they went
-  const act = [[0, 0]].concat(g.flow.map(([t, h, a]) => [t, h - a])).concat([[end, g.home_score - g.away_score]]);
+  const act = [[0, 0]].concat(g.flow.map(([t, h, a]) => [t, h - a])).concat([[stop, g.home_score - g.away_score]]);
   const ev = shots.filter((s) => s.xtrip_milli).map((s) => [s.t, (s.away ? -1 : 1) * s.xtrip_milli / 1000])
     .concat(g.fts.filter((f) => f[2]).map((f) => [f[0], f[1] ? -1 : 1])).sort((a, b) => a[0] - b[0]);
   let cum = 0;
-  const xp = [[0, 0]].concat(ev.map(([t, v]) => [t, (cum += v)])).concat([[end, cum]]);
+  const xp = [[0, 0]].concat(ev.map(([t, v]) => [t, (cum += v)])).concat([[stop, cum]]);
   const ys = act.map((p) => p[1]).concat(xp.map((p) => p[1]));
   const lim = Math.max(8, Math.ceil(Math.max(...ys.map(Math.abs)) / 5) * 5);
   const X = (t) => m.l + (t / end) * (W - m.l - m.r), Y = (v) => m.t + ((lim - v) / (2 * lim)) * (H - m.t - m.b);
@@ -573,11 +583,11 @@ function flowChart(g, shots) {
 }
 
 // ------------------------------------------------------------------ router and masthead
-const ROUTES = { league: renderLeague, teams: renderTeamsHome, players: renderPlayersHome, games: renderGames };
+const ROUTES = { league: renderLeague, teams: renderTeamsHome, players: renderPlayersHome, games: renderGames, news: renderNews };
 async function route() {
   const view = $("#view");
   const [tab, a, b] = (location.hash.replace(/^#/, "") || "league").split("/");
-  const tabName = tab === "game" ? "games" : tab;
+  const tabName = tab === "game" || tab === "live" ? "games" : tab;
   $$(".tabs a").forEach((x) => (x.getAttribute("aria-current") === "page" ? x.removeAttribute("aria-current") : 0));
   $(`.tabs a[data-tab="${tabName}"]`)?.setAttribute("aria-current", "page");
   view.innerHTML = `<p class="loading">Loading</p>`;
@@ -586,12 +596,14 @@ async function route() {
     else if (tab === "players" && a) await renderPlayer(view, a);
     else if (tab === "game" && a && b) await renderGame(view, a, b);
     else if (tab === "about") renderAbout(view, a);
+    else if (tab === "news") await renderNews(view, a);
+    else if (tab === "live" && a) await renderLive(view, a);
     else await (ROUTES[tab] || renderLeague)(view);
   } catch (e) {
     console.error(e);
     view.innerHTML = `<section class="zone"><h1>That page didn't load</h1><p class="lede">We couldn't load the numbers for it (${esc(e.message)}). Try again in a minute, or start from <a href="#league">the league</a>.</p></section>`;
   }
-  if (!location.hash.includes("/") || tab === "game") window.scrollTo(0, 0);
+  if (!location.hash.includes("/") || tab === "game" || tab === "live") window.scrollTo(0, 0);
 }
 function setSeason(s) {
   S.season = +s; store.set("board-season", String(s)); S.pMin = null;
@@ -622,6 +634,7 @@ async function init() {
   });
   applyTheme(); applyTeamButton(); freshness();
   window.addEventListener("hashchange", route);
+  liveInit();
   route();
 }
 init();

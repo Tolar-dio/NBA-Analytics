@@ -1,0 +1,21 @@
+{
+  "_note": "Feeds the hourly news job reads (scripts/news.py). League-wide sources only: the site serves every fan base, so no single-team outlets. Headlines, teasers and links only; never republish full article text. Disney (ESPN) and NBA.com feeds are left out because their terms don't allow automated use. Podcast feed URLs come from Apple's podcast directory; episodes play from each show's public feed, as in any podcast app. YouTube: the NBA's channel feeds official game highlights onto game pages and is the only channel embedded.",
+  "news": [
+    {"name": "The Athletic", "url": "https://www.nytimes.com/athletic/rss/nba/", "paywalled": true},
+    {"name": "CBS Sports", "url": "https://www.cbssports.com/rss/headlines/nba/"},
+    {"name": "Yahoo Sports", "url": "https://sports.yahoo.com/nba/rss/"},
+    {"name": "SB Nation", "url": "https://www.sbnation.com/rss/nba/index.xml"}
+  ],
+  "podcasts": [
+    {"name": "The Zach Lowe Show", "url": "https://feeds.megaphone.fm/zach-lowe", "apple": 1805478723},
+    {"name": "The Ringer NBA Show", "url": "https://feeds.megaphone.fm/the-ringer-nba-show", "apple": 1109271715},
+    {"name": "The Mismatch", "url": "https://feeds.megaphone.fm/the-jj-redick-podcast", "apple": 1317853625},
+    {"name": "Thinking Basketball", "url": "https://rss.art19.com/thinking-basketball", "apple": 1428290303},
+    {"name": "Dunc'd On", "url": "https://feeds.simplecast.com/JGGpY1xu", "apple": 986901174},
+    {"name": "The Athletic NBA Daily", "url": "https://feeds.acast.com/public/shows/6818c192eb737caf8cadd833", "apple": 1358187061},
+    {"name": "No Dunks", "url": "https://www.omnycontent.com/d/playlist/e73c998e-6e60-432f-8610-ae210140c5b1/170a762b-6e4b-4cb5-a181-b36a00f64617/64cb7714-6ad9-4029-887f-b36a00f64628/podcast.rss", "apple": 1468409996}
+  ],
+  "youtube": [
+    {"name": "NBA", "channel": "UCWJ2lWNubArHWmf3FIHbfcQ"}
+  ]
+}

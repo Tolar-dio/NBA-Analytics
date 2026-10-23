@@ -18,6 +18,7 @@ site/data/
 import datetime as dt
 import json
 import os
+import re
 import shutil
 import sys
 
@@ -341,6 +342,74 @@ def games_out(season, D):
                                   "games": sorted(idx, key=lambda r: (r[1], r[2] or ""), reverse=True)})
 
 
+def live_zone(sh):
+    """The zones the live page uses to value a shot (same cut as shot_quality.zone, computable in the browser)."""
+    d, side = sh.dist, (sh.x - 25).abs()
+    two = np.select([d < 3, d < 6, d < 10, d < 16], ["0-3", "3-6", "6-10", "10-16"], default="16+2")
+    three = np.select([(side >= 21.5) & (sh.y <= 9), d < 26, d < 30], ["c3", "ab3", "ab3 deep"], default="ab3 far")
+    return np.where(sh.value == 3, three, two)
+
+
+def shot_values():
+    """Make rates by zone and by zone x shot description, for valuing live shots in the browser (the full model
+    needs Python; this table scored 0.641 log loss against the model's 0.636 on 2025-26), plus each team's
+    second-chance rate for per-trip expected points."""
+    frames = []
+    for season in (PREV, CUR):
+        if os.path.exists(out_path(season, "shots_xp.csv.gz")):
+            sh = table(season, "shots")
+            frames.append(sh[(sh.heave == 0) & sh.dist.notna()])
+    if not frames:
+        return
+    sh = pd.concat(frames)
+    sh["zone"] = live_zone(sh)
+    z = sh.groupby("zone").made.agg(["sum", "count"])
+    zr = (z["sum"] / z["count"]).to_dict()
+    zt = sh.groupby(["zone", "shot_type"]).made.agg(["sum", "count"]).reset_index()
+    k = 30
+    rates = {f"{r.zone}|{r.shot_type}": round((r["sum"] + k * zr[r.zone]) / (r["count"] + k), 4)
+             for _, r in zt.iterrows() if r["count"] >= 5}
+    trips = {}
+    path = out_path(CUR, "trips.json")
+    if os.path.exists(path):
+        with open(path) as f:
+            tp = json.load(f)
+        abbr = dict(zip(table(CUR, "teams").team_id, table(CUR, "teams").abbr))
+        trips = {"league": tp["second_chance_rate_league"], "points": tp["second_chance_points"],
+                 "q2": tp["q2"], "q3": tp["q3"],
+                 "team": {abbr.get(int(t), t): round(v, 4) for t, v in tp["rate_by_team"].items()}}
+    dump("shotvalue.json", {"zones": {k_: round(v, 4) for k_, v in zr.items()}, "rates": rates, "trips": trips})
+
+
+def injuries():
+    """The latest injury report from the nightly pull: who's out or questionable, when they're expected back, and
+    the report's note (shortened)."""
+    import glob
+    import gzip
+    files = sorted(glob.glob(os.path.join(os.path.dirname(TABLES), "raw", "injuries", "*.json.gz")))
+    if not files:
+        return
+    with gzip.open(files[-1], "rt", encoding="utf-8") as f:
+        rep = json.load(f)
+    teams = table(CUR, "teams") if os.path.exists(os.path.join(TABLES, str(CUR), "teams.csv.gz")) else table(PREV, "teams")
+    abbr = dict(zip(teams.team_id, teams.abbr))
+    order = {"Out": 0, "Doubtful": 1, "Questionable": 2, "Day-To-Day": 3, "Probable": 4, "Available": 5}
+    rows = []
+    for r in rep.get("data", []):
+        p = r.get("player") or {}
+        note = re.sub(r"\s+", " ", r.get("description") or "").strip()
+        note = re.sub(r"^Injury/Illness - ", "", note)
+        note = re.split(r"(?<=\.) Prior reporting", note)[0]
+        if len(note) > 240:
+            note = note[:240].rsplit(" ", 1)[0] + "…"
+        rows.append({"id": p.get("id"), "name": f"{p.get('first_name', '')} {p.get('last_name', '')}".strip(),
+                     "team": abbr.get(p.get("team_id")), "status": r.get("status"), "back": r.get("return_date"),
+                     "note": note})
+    rows.sort(key=lambda r: (r["team"] or "", order.get(r["status"], 9), r["name"]))
+    dump("injuries.json", {"as_of": rep.get("taken_at"), "players": rows})
+    print(f"injuries: {len(rows)} players as of {rep.get('taken_at')}")
+
+
 def main():
     if os.path.isdir(DATA):
         shutil.rmtree(DATA)
@@ -359,8 +428,14 @@ def main():
         last = D["games"].date.max()
         seasons.append({"season": season, "label": LABEL(season), "games": n, "through": last})
         print(f"{season}: {n} regular-season games through {last}")
+    injuries()
+    shot_values()
+    news = os.path.join(ROOT, "data", "news", "index.json")
+    if os.path.exists(news):            # a copy as of this build; the site prefers the repository's live file
+        shutil.copy(news, os.path.join(DATA, "news.json"))
     dump("meta.json", {"updated_utc": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                       "current": seasons[0]["season"] if seasons else None, "seasons": seasons})
+                       "current": seasons[0]["season"] if seasons else None, "seasons": seasons,
+                       "live_url": os.environ.get("LIVE_URL", "").strip() or None})
 
 
 if __name__ == "__main__":

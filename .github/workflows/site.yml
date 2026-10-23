@@ -87,6 +87,8 @@ jobs:
           done
 
       - name: Build the site's data
+        env:
+          LIVE_URL: ${{ vars.LIVE_URL }}   # the live relay (Cloudflare Worker); blank = no live scores
         run: python site/build.py
 
       - name: Stage only the public files
