@@ -19,14 +19,20 @@ const Court = (() => {
     `<circle class="rim" cx="25" cy="1" r="0.75"/>`,
   ].join("");
 
+  const f = (v) => v.toFixed(2);
   function mark(s, i) {
-    if (s.made) return `<circle class="o" data-i="${i}" cx="${s.x}" cy="${s.y}" r="0.62"/>`;
+    if (s.made) return `<circle class="o" data-i="${i}" cx="${f(s.x)}" cy="${f(s.y)}" r="0.62"/>`;
     const d = 0.5, hi = s.p != null && s.p >= 0.6 ? " hi" : "";
-    return `<path class="x${hi}" data-i="${i}" d="M${s.x - d} ${s.y - d}L${s.x + d} ${s.y + d}M${s.x + d} ${s.y - d}L${s.x - d} ${s.y + d}"/>`;
+    return `<path class="x${hi}" data-i="${i}" d="M${f(s.x - d)} ${f(s.y - d)}L${f(s.x + d)} ${f(s.y + d)}M${f(s.x + d)} ${f(s.y - d)}L${f(s.x - d)} ${f(s.y + d)}"/>`;
   }
 
   // shots: [{x, y, made, p}], opts: {label, onPick(i)}
-  function draw(svg, shots, opts = {}) {
+  // the feed's locations are whole feet, so shots stack on a grid; a small fixed nudge (under half a foot,
+  // the same on every load) lets you see how many shots sit on one spot
+  const jit = (i, k) => ((((i + 1) * (k ? 7919 : 104729)) % 1000) / 1000 - 0.5) * 0.8;
+
+  function draw(svg, raw, opts = {}) {
+    const shots = raw.map((s, i) => ({ ...s, x: s.x + jit(i, 0), y: s.y + jit(i, 1) }));
     const vis = shots.map((s, i) => [s, i]).filter(([s]) => s.y <= HALF + 0.5 && s.y >= BASE - 1);
     svg.setAttribute("viewBox", `-1 ${BASE - 1} 52 ${HALF - BASE + 2}`);
     svg.setAttribute("class", "court");
